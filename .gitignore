@@ -4,3 +4,4 @@ target/
 cp.txt
 .vscode/
 hbase-site.xml
+run_test.bat
