@@ -1,4 +1,3 @@
-
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -13,7 +12,7 @@
     <packaging>jar</packaging>
 
     <name>Library Management System</name>
-    <description>A Maven-based Java 17 library management project</description>
+    <description>A Maven-based Java 17 library management project with HBase and Spring Boot REST API</description>
 
     <properties>
         <java.version>17</java.version>
@@ -26,11 +25,21 @@
              calls Subject.getSubject() which was removed in Java 17 (JEP 411).
              Hadoop 3.3.x restores Java 17 compatibility. -->
         <hadoop.version>3.3.6</hadoop.version>
+        <spring-boot.version>3.2.5</spring-boot.version>
     </properties>
 
-    <!-- Override the Hadoop version pulled in transitively by hbase-client -->
     <dependencyManagement>
         <dependencies>
+            <!-- Spring Boot BOM — manages all Spring dependency versions -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Force Hadoop 3.3.6 to avoid Subject.getSubject() removal in Java 17 -->
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
                 <artifactId>hadoop-common</artifactId>
@@ -55,16 +64,37 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Spring Boot Web — embeds Tomcat, Jackson JSON, REST support -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <!-- Exclude default Logback to avoid SLF4J conflict with HBase log4j -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- Apache HBase Client -->
         <dependency>
             <groupId>org.apache.hbase</groupId>
             <artifactId>hbase-client</artifactId>
             <version>${hbase.version}</version>
             <exclusions>
-                <!-- Exclude javax.servlet to avoid conflicts on Java 17 -->
                 <exclusion>
                     <groupId>javax.servlet</groupId>
                     <artifactId>servlet-api</artifactId>
+                </exclusion>
+                <!-- Exclude HBase's SLF4J binding to avoid conflicts with Spring Boot -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>log4j</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -88,17 +118,36 @@
                 <configuration>
                     <release>17</release>
                     <encoding>UTF-8</encoding>
+                    <parameters>true</parameters>
                 </configuration>
             </plugin>
 
-            <!-- Maven Surefire Plugin (for running tests) -->
+            <!-- Maven Surefire Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
             </plugin>
 
-            <!-- Exec Maven Plugin — runs HBaseConnection with Java 17 JVM flags -->
+            <!-- Spring Boot Maven Plugin — creates executable fat JAR -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <configuration>
+                    <mainClass>com.library.LibraryApplication</mainClass>
+                    <jvmArguments>--add-opens java.base/javax.security.auth=ALL-UNNAMED</jvmArguments>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Exec Maven Plugin — runs specific classes directly -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
@@ -106,13 +155,10 @@
                 <configuration>
                     <executable>java</executable>
                     <arguments>
-                        <!-- Required: Hadoop 2.x calls Subject.getSubject() removed in Java 17 -->
                         <argument>--add-opens</argument>
                         <argument>java.base/javax.security.auth=ALL-UNNAMED</argument>
-                        <!-- Classpath -->
                         <argument>-classpath</argument>
                         <classpath/>
-                        <!-- Main class -->
                         <argument>com.library.config.HBaseConnection</argument>
                     </arguments>
                 </configuration>
